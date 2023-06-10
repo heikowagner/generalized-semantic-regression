@@ -1,0 +1,8 @@
+pandas
+numpy
+sentence_transformers
+datasets
+statsmodels
+matplotlib
+torch
+accelerate

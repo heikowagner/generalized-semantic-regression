@@ -1,0 +1,8 @@
+version: '2'
+services:
+  dev-env:
+    image: tensorflow/tensorflow:latest
+    volumes:
+      - "/root"
+      - ./:/app
+    command: tail -f /dev/null
