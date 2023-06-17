@@ -1,16 +1,48 @@
 # %%
 import torch
 from transformers import PreTrainedModel, BertPreTrainedModel, AutoModel, AutoConfig, AutoTokenizer
+import matplotlib.pyplot as plt
+from transformers import AdamW
+from tqdm.auto import tqdm
 
 # %%
+class glmModel(torch.nn.Module):
+    def __init__(self, input_dim):
+        super(glmModel, self).__init__()
+        self.output = torch.nn.Linear(input_dim, 1)
+
+    def forward(
+        self,
+        covariates,
+        labels=None,
+    ):
+        
+        lambda_i = self.output(covariates)
+        # if labels, then we are training
+        loss = None
+        if labels is not None:
+            # add custom neg log likelyhood here
+            loss_fn = torch.nn.PoissonNLLLoss()
+            loss = loss_fn(lambda_i, labels)
+            
+        return {
+            "loss": loss,
+            "lambda": lambda_i
+        }
+
+
 class RiskBertModel(PreTrainedModel):
-    def __init__(self, model, input_dim):
-        super().__init__(AutoConfig.from_pretrained(model))
+    def __init__(self, model, input_dim, dropout=0.5, freeze_bert=False):
+        super(RiskBertModel, self).__init__(AutoConfig.from_pretrained(model))
         self.backbone = AutoModel.from_pretrained(model)
+        self.dropout = torch.nn.Dropout(dropout)
         config = AutoConfig.from_pretrained(model)
         #self.output = nn.Linear(config.hidden_size, config.num_labels)
         self.intertmed= torch.nn.Linear(config.hidden_size,1, bias=False)
         self.output = torch.nn.Linear(input_dim+1, 1)
+        if freeze_bert:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
 
     def forward(
         self,
@@ -26,25 +58,35 @@ class RiskBertModel(PreTrainedModel):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
+            #return_dict=False
         )
-
         sequence_output = outputs.last_hidden_state
-        intermed = self.intertmed(sequence_output)
-        outputs = self.output(torch.cat( (torch.mean(intermed).reshape(1) , covariates), axis=0 ))
+        cls_representation = sequence_output[:,0,:]
+
+        #dropped_outputs = self.dropout(sequence_output)
+        dropped_outputs = self.dropout(cls_representation)
+        intermed = self.intertmed(dropped_outputs)
+        if len(intermed)==1:
+            lambda_i = self.output(torch.cat( (intermed.reshape(1) , covariates), axis=0 ))
+        else:
+            lambda_i = self.output(torch.cat( (intermed , covariates), 1 ))
+
+        #lambda_i = self.output(torch.cat( (torch.mean(intermed).reshape(1) , covariates), axis=0 ))
 
         # if labels, then we are training
         loss = None
         if labels is not None:
             # add custom neg log likelyhood here
             loss_fn = torch.nn.PoissonNLLLoss()
-            loss = loss_fn(outputs, labels)
+            loss = loss_fn(lambda_i, labels)
             
         return {
             "loss": loss,
-            "lambda": outputs
+            "lambda": lambda_i
         }
     
-model = RiskBertModel("bert-base-uncased", 2)
+model = RiskBertModel("bert-base-uncased", 2, freeze_bert=False)
+
  # %%
 
 # %% 
@@ -52,12 +94,12 @@ model = RiskBertModel("bert-base-uncased", 2)
 #model.compile(optimizer=Adam(3e-5))
 from data_functions import Data
 
-model_dataset = Data()
+model_dataset = Data(50000)
 # %%
 
-sentence = model_dataset.__getitem__(1)[2]
-covariates = model_dataset.__getitem__(1)[0]  #covariates are the first tensor!
-label = model_dataset.__getitem__(1)[1]
+sentence = model_dataset.__getitem__(100)[2]
+covariates = model_dataset.__getitem__(100)[0]  #covariates are the first tensor!
+label = model_dataset.__getitem__(100)[1]
 
 # %%
 
@@ -72,134 +114,142 @@ inputs = tokenizer(str( sentence ), return_tensors="pt")
 # %% Put dataset into RiskBert model
 fit = model(**inputs, covariates= covariates, labels=label)
 
-
+# %%
+loss = fit['loss']
+print(loss)
 # %%
 from torch.utils.data import DataLoader
-train_loader = DataLoader(dataset=train_dataset, batch_size=1)
+train_loader = DataLoader(dataset=train_dataset, batch_size=5000)
 
-
-# Train the model
-Loss = []
-optimizer = torch.optim.SGD(model.parameters(), lr=0.0001)
-epochs = 100
-for epoch in range(epochs):
-    for x,y, sentence_sample in train_dataset:
-
-        inputs = tokenizer(str( sentence_sample ), return_tensors="pt")
-        #print(x)
-        #print(y)
-        #print(inputs)
-        y_pred = model(**inputs, covariates=x, labels=y)
-        loss = y_pred['loss']
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()   
-    print(f"epoch = {epoch}, loss = {loss}")
-print("Done training!")
- 
 # %%
 
+# at beginning of the script
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
+print(device)
 # Train the model
 Loss = []
-epochs = 100
+#optimizer = torch.optim.SGD(model.parameters(), lr=0.00001)
+# activate training mode
+model.train()
+
+from transformers import get_linear_schedule_with_warmup
+epochs = 1
+total_steps = len(train_loader) * epochs
+
+# %%
+epochs = 30
+optimizer = AdamW(model.parameters(),
+                  lr = 2e-5, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+                  eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
+                )
+
+dataloader = DataLoader(train_dataset,
+                        batch_size=100,
+                        shuffle=True)
+
+total_steps = len(dataloader) * epochs
+
+scheduler = get_linear_schedule_with_warmup(optimizer, 
+                                            num_warmup_steps = 0, # Default value in run_glue.py
+                                            num_training_steps = total_steps)
+
 for epoch in range(epochs):
-    for x,y in train_loader:
-        y_pred = MLR_model(x)
-        loss = criterion(y_pred, y)
-        Loss.append(loss.item())
+    Loss=[] # reset loss for each epoch
+    Test_Loss=[]
+    total_loss = 0
+    total_loss_test = 0
+    model.train() # set model in train mode
+    #model.eval()
+    for x,y, sentence_sample in dataloader:
+        inputs =  tokenizer( ["[CLS]" + str( sentence ) + "[SEP]" for sentence in sentence_sample], return_tensors="pt",padding=True ).to(device)
+        x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
+        y_pred = model(**inputs, covariates=x, labels=y)
+        loss = y_pred['loss']
         loss.backward()
-        optimizer.step()   
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        scheduler.step()
+        Loss.append(loss)
+        total_loss += loss.item()
+    #for x,y, sentence_sample in test_dataset:
+    #    with torch.no_grad():        
+    #        inputs = tokenizer(str( sentence_sample ), return_tensors="pt")
+    #        inputs.to(device)
+    #        x, y = x.to(device), y.to(device)
+    #        y_pred = model(**inputs, covariates=x, labels=y)
+    #        loss = y_pred['loss']
+    #        Test_Loss.append(loss)
+    #        total_loss_test += loss.item()
     print(f"epoch = {epoch}, loss = {loss}")
+    print(f"epoch = {epoch}, total loss = {total_loss/ len(train_dataset)}")
+    print(f"epoch = {epoch}, test loss = {total_loss_test/ len(test_dataset)}")
 print("Done training!")
+
+
  
+# %%
 # Plot the graph for epochs and loss
-plt.plot(Loss)
+plt.plot([l.cpu().detach().numpy() for l in Loss])
 plt.xlabel("Iterations ")
 plt.ylabel("total loss ")
 plt.show()
 
-
-# %%
-def preprocess_function(input_dataset):
-    tokenized = tokenizer(str( input_dataset[2]), truncation=True)
-    tokenized + {"covariates": input_dataset[0] } + {"labels": input_dataset[1] }
-    return tokenized
-
-# %%
-preprocess_function(model_dataset.__getitem__(1))
-
-# %%
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-
-inputs = tokenizer("Hello, my [MASK] is cute", return_tensors="pt")
-
-# %%
-with torch.no_grad():
-    lambda = model(**inputs, covariates= covariates)['lambda']
-#outputs = model(**inputs)
-lambda
-
-
-
-
-# %%
-from transformers import TrainingArguments, Trainer
-from data_functions import Data
-
-training_args = TrainingArguments(
-    output_dir='./results',
-    learning_rate=2e-5,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=16,
-    num_train_epochs=5,
-    weight_decay=0.01,
-)
-
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_imdb["train"],
-    eval_dataset=tokenized_imdb["test"],
-    tokenizer=tokenizer,
-)
-
-trainer.train()
-
-
-# %%
-model_test = AutoModel.from_pretrained("bert-base-uncased")
-
+#[p for p in model.parameters()]
 # %%
 
-from transformers import AutoTokenizer, BertForPreTraining, BertForMaskedLM
-import torch
+#2nd and third param are the params of the glm
+for param in model.output.parameters():
+    print(param)
 
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-# model = BertForPreTraining.from_pretrained("bert-base-uncased")
 
-model = BertForMaskedLM.from_pretrained("bert-base-uncased")
+#%%
+## Fit an ordinary glm
 
-#model = AutoModel.from_pretrained("bert-base-uncased")
+glm_model = glmModel(2)
 
-inputs = tokenizer("Hello, my [MASK] is cute", return_tensors="pt")
 
-with torch.no_grad():
-    logits = model(**inputs).logits
-#outputs = model(**inputs)
+optimizer = AdamW(glm_model.parameters(),
+                  lr = 2e-2, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+                  eps = 1e-4 # args.adam_epsilon  - default is 1e-8.
+                )
 
-mask_token_index = (inputs.input_ids == tokenizer.mask_token_id)[0].nonzero(as_tuple=True)[0]
+dataloader = DataLoader(train_dataset,
+                        batch_size=5000,
+                        shuffle=True)
 
-predicted_token_id = logits[0, mask_token_index].argmax(axis=-1)
-tokenizer.decode(predicted_token_id)
+epochs = 100
+for epoch in range(epochs):
+    Loss=[] # reset loss for each epoch
+    Test_Loss=[]
+    total_loss = 0
+    total_loss_test = 0
+    glm_model.to(device)
+    glm_model.train() # set model in train mode
+    for x,y, sentence_sample in dataloader:
+        x, y = x.to(device), y.to(device)
+        print(x)
+        optimizer.zero_grad()
+        y_pred = glm_model(covariates=x, labels=y)
+        loss = y_pred['loss']
+        loss.backward()
+        optimizer.step()
+        Loss.append(loss)
+        total_loss += loss.item()
+    print(f"epoch = {epoch}, loss = {loss}")
+    print(f"epoch = {epoch}, total loss = {total_loss/ len(train_dataset)}")
+    print(f"epoch = {epoch}, test loss = {total_loss_test/ len(test_dataset)}")
+print("Done training!")
+
 # %%
+# Plot the graph for epochs and loss
+plt.plot([l.cpu().detach().numpy() for l in Loss])
+plt.xlabel("Iterations ")
+plt.ylabel("total loss ")
+plt.show()
 
-#use labels for loss ->
-
-#labels = tokenizer("The capital of France is Paris.", return_tensors="pt")["input_ids"]
-# mask labels of non-[MASK] tokens
-#labels = torch.where(inputs.input_ids == tokenizer.mask_token_id, labels, -100)
-
-#outputs = model(**inputs, labels=labels)
-#round(outputs.loss.item(), 2)
+# true parameter are 1 and 3, we
+for param in glm_model.parameters():
+    print(param)
+# %%

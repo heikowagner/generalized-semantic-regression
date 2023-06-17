@@ -1,8 +1,15 @@
-version: '2'
+version: "3.9"
 services:
   dev-env:
-    image: tensorflow/tensorflow:latest
+    image: riskbert
+    build: .
+    tty: true
     volumes:
       - "/root"
       - ./:/app
     command: tail -f /dev/null
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
