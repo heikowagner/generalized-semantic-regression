@@ -7,15 +7,16 @@ from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 # %%
 
-def sentence_generator():
+def sentence_generator(weight=1):
     dataset = load_dataset("glue", "ax")
     model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
     
     # We use the sentence model to generate embeddings. The loaded sentences  are of the form premise is the sentence while hypothesis is the negation
     # Since we assume that the negation has the inverse impact on the risk, for simulation, we do not use the embedding of the negation rather than the negative
     # Embedding of the original sentence. 
-    score1=model.encode(dataset['test']['premise'])
-    scorem1=-model.encode(dataset['test']['premise'])
+    score1=weight*model.encode(dataset['test']['premise'])
+    scorem1=-weight*model.encode(dataset['test']['premise'])
+    #scorem1=model.encode(dataset['test']['hypothesis'])
 
     # However as input we memory the positive as well as the negation sentences.
     senetences = dataset['test']['premise'] + dataset['test']['hypothesis']
@@ -34,7 +35,7 @@ def generate_training(N=5000, seed=123):
     x2 = np.random.normal(size=N)
     sentence_sample = sentence_embeddings.sample(N, replace=True)
     embeddings=pd.DataFrame( list(sentence_sample["Embeddings"]) )
-    embed_scores= np.random.normal(size=len(sentence_embeddings["Embeddings"][0]))
+    embed_scores= np.random.normal(size=len(sentence_embeddings["Embeddings"][0])) 
     lambda_i = np.exp(1 + 2*x1 + 3*x2 + np.matmul(embeddings,embed_scores))
 
     X = pd.DataFrame(data=zip(x1,x2), columns=["x1", "x2"])
@@ -48,29 +49,31 @@ def generate_training(N=5000, seed=123):
 # %%
 class Data(Dataset):
     # Constructor
-    def __init__(self, N=5000):
-        self.x = torch.zeros(N, 2)
-        self.x[:, 0] = torch.randn(N) # torch.arange(-2, 2, 0.1)
-        self.x[:, 1] = torch.randn(N) #torch.arange(-2, 2, 0.1)
+    def __init__(self, N=5000, scores=torch.tensor([[1.0], [3.0]]), intercept=0, weigth=1):
+        self.x = torch.zeros(N, len(scores))
+        for i in range(0,len(scores)):
+            self.x[:, i] = torch.randn(N) # torch.arange(-2, 2, 0.1)
         # scores
-        self.w = torch.tensor([[1.0], [3.0]])
+        self.w = scores
 
-        sentence_embeddings = sentence_embeddings = sentence_generator()
+        sentence_embeddings = sentence_generator(weigth)
         self.sentence_sample = sentence_embeddings.sample(N, replace=True).reset_index()
-        embeddings=torch.tensor(np.array( list(self.sentence_sample["Embeddings"])))
-        embed_scores= torch.randn(len(sentence_embeddings["Embeddings"][0]),1)
-        self.b = 1 #intercept
-        self.lambda_i = torch.mm(self.x, self.w) + torch.mm(embeddings, embed_scores) +self.b    
+        self.embeddings=torch.tensor(np.array( list(self.sentence_sample["Embeddings"])))
+        #self.embed_scores= torch.randn(len(sentence_embeddings["Embeddings"][0]),1)
+        self.embed_scores= torch.rand(len(sentence_embeddings["Embeddings"][0]),1)
+        #self.embed_scores= torch.ones(len(sentence_embeddings["Embeddings"][0]),1)/len(sentence_embeddings["Embeddings"][0])
+        self.b = intercept
+        self.lambda_i = torch.mm(self.x, self.w) + torch.mm(self.embeddings, self.embed_scores) +self.b    
         self.y = torch.poisson( torch.exp(self.lambda_i) )
         self.len = self.x.shape[0]
     # Getter
     def __getitem__(self, index):
-        return self.x[index], self.y[index], self.sentence_sample["Sentences"][index]
+        return self.x[index], self.y[index], self.sentence_sample["Sentences"][index], self.embeddings[index]
     # getting data length
     def __len__(self):
         return self.len
 
-# my_sample2 = Data()
+# my_sample2 = Data(weigth=0)
 
 #%%
 # my_sample2.__getitem__(1)
