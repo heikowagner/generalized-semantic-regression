@@ -28,9 +28,9 @@ pre_model= "distilbert-base-uncased"
 
 glm_model = glmModel(2).to(device)
 
-glm_model, Total_Loss_glm, Validation_Loss_glm =  trainer(model =glm_model, 
+glm_model, Total_Loss_glm, Validation_Loss_glm, Test_Loss_glm =  trainer(model =glm_model, 
         model_dataset = model_dataset, 
-        epochs=150, 
+        epochs=100, 
         evaluate_fkt=evaluate_model_glm,
         batch_size=500,
         tokenizer=  AutoTokenizer.from_pretrained(pre_model), 
@@ -38,7 +38,7 @@ glm_model, Total_Loss_glm, Validation_Loss_glm =  trainer(model =glm_model,
         )
 #%%
 model = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=True, mode="CLS").to(device)
-model, Total_Loss, Validation_Loss = trainer(model =model, 
+model, Total_Loss, Validation_Loss, Test_Loss = trainer(model =model, 
         model_dataset = model_dataset, 
         epochs=100,
         batch_size=1000,
@@ -54,7 +54,7 @@ gc.collect()
 # %%
 
 model_unfreeze = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=False, mode="CLS").to(device)
-model_unfreeze, Total_Loss_unfreeze, Validation_Loss_unfreeze = trainer(model =model_unfreeze, 
+model_unfreeze, Total_Loss_unfreeze, Validation_Loss_unfreeze, Test_Loss_unfreeze = trainer(model =model_unfreeze, 
         model_dataset = model_dataset, 
         epochs=100,
         batch_size=250,
@@ -65,3 +65,33 @@ model_unfreeze, Total_Loss_unfreeze, Validation_Loss_unfreeze = trainer(model =m
 
 # %%
 visualize_model(model_unfreeze, model_dataset, AutoTokenizer.from_pretrained(pre_model))
+
+# %%
+Total_Loss_glm, Validation_Loss_glm 
+Total_Loss, Validation_Loss 
+Total_Loss_unfreeze, Validation_Loss_unfreeze 
+# %%
+Total_Loss_glm[-1:], 
+Validation_Loss_glm[-1:]
+Total_Loss[-1:], 
+Validation_Loss[-1:]
+Total_Loss_unfreeze[-1:], 
+Validation_Loss_unfreeze[-1:]
+
+# %%
+plt.plot([l for l in Total_Loss], label="Train Loss freezed model")
+plt.plot([l for l in Validation_Loss], label="Validation Loss  freezed model")
+ax.legend(['A simple line'])
+plt.xlabel("Iterations ")
+plt.ylabel("total loss ")
+# %%
+import pandas as pd
+
+classes = ['GLM', 'BERT freezed', 'BERT full']
+df = pd.DataFrame([
+        [Total_Loss_glm[-1:][0], Validation_Loss_glm[-1:][0], Test_Loss_glm],
+        [Total_Loss[-1:][0], Validation_Loss[-1:][0], Test_unfreeze], 
+        [Total_Loss_unfreeze[-1:][0],  Validation_Loss_unfreeze[-1:][0], Test_Loss_unfreeze],
+        ], classes, ['Loss', 'Validation Loss', 'Test Loss'])
+df
+# %%

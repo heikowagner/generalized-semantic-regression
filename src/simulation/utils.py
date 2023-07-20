@@ -84,7 +84,7 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
                     sentence_sample = sentence_sample
                 )
                 val_loss += v_loss.item()
-
+           
         print(f"epoch = {epoch}, loss = {loss}")
         print(f"epoch = {epoch}, loss = {v_loss}")
         print(f"epoch = {epoch}, total loss = {total_loss/ len(train_batches)}")
@@ -92,6 +92,18 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         Total_Loss.append(total_loss/ len(train_batches))
         Validation_Loss.append(val_loss/ len(val_batches))
     print("Done training!")
+
+    with torch.no_grad():
+        test_loss = evaluate_fkt(
+            model = model, 
+            tokenizer = tokenizer,
+            x = test_dataset.dataset.x,
+            y = test_dataset.dataset.y, 
+            sentence_sample = test_dataset.dataset.sentence_sample["Sentences"]
+        )
+        test_loss = test_loss.item()
+    
+    print(f"epoch = {epoch}, Test loss = {test_loss}")
     # Plot the graph for epochs and loss
 
     plt.plot([l for l in Total_Loss], label="Train Loss")
@@ -104,7 +116,7 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     for param in model.output.parameters():
         print(param)
 
-    return model, Total_Loss, Validation_Loss
+    return model, Total_Loss, Validation_Loss, test_loss
 
 
 def print_params(model):
