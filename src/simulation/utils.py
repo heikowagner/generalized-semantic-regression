@@ -43,6 +43,10 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
                             batch_size=batch_size,
                             shuffle=True)
 
+    test_batches = DataLoader(test_dataset,
+                            batch_size=batch_size,
+                            shuffle=False)
+
     total_steps = len(train_batches) * epochs
 
     scheduler = get_linear_schedule_with_warmup(optimizer, 
@@ -93,16 +97,21 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         Validation_Loss.append(val_loss/ len(val_batches))
     print("Done training!")
 
-    with torch.no_grad():
-        test_loss = evaluate_fkt(
-            model = model, 
-            tokenizer = tokenizer,
-            x = test_dataset.dataset.x,
-            y = test_dataset.dataset.y, 
-            sentence_sample = test_dataset.dataset.sentence_sample["Sentences"]
-        )
-        test_loss = test_loss.item()
+    test_loss = 0        
+    model.eval() # set model in eval mode
     
+    with torch.no_grad():
+        for x,y, sentence_sample, embeddingsx in test_batches:
+            v_loss = evaluate_fkt(
+                model = model, 
+                tokenizer = tokenizer, 
+                x = x,
+                y = y, 
+                sentence_sample = sentence_sample
+            )
+            test_loss += v_loss.item()
+    Test_Loss = test_loss/ len(test_batches)
+
     print(f"epoch = {epoch}, Test loss = {test_loss}")
     # Plot the graph for epochs and loss
 
@@ -116,7 +125,7 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     for param in model.output.parameters():
         print(param)
 
-    return model, Total_Loss, Validation_Loss, test_loss
+    return model, Total_Loss, Validation_Loss, Test_Loss
 
 
 def print_params(model):
