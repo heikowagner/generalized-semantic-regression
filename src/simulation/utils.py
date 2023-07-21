@@ -102,14 +102,14 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     
     with torch.no_grad():
         for x,y, sentence_sample, embeddingsx in test_batches:
-            v_loss = evaluate_fkt(
+            t_loss = evaluate_fkt(
                 model = model, 
                 tokenizer = tokenizer, 
                 x = x,
                 y = y, 
                 sentence_sample = sentence_sample
             )
-            test_loss += v_loss.item()
+            test_loss += t_loss.item()
     Test_Loss = test_loss/ len(test_batches)
 
     print(f"epoch = {epoch}, Test loss = {test_loss}")

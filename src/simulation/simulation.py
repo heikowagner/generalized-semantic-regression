@@ -79,9 +79,14 @@ Total_Loss_unfreeze[-1:],
 Validation_Loss_unfreeze[-1:]
 
 # %%
+fig, ax = plt.subplots()
+plt.plot([l for l in Total_Loss_glm], label="Train Loss glm model")
+plt.plot([l for l in Validation_Loss_glm], label="Validation Loss glmmodel")
 plt.plot([l for l in Total_Loss], label="Train Loss freezed model")
 plt.plot([l for l in Validation_Loss], label="Validation Loss  freezed model")
-ax.legend(['A simple line'])
+plt.plot([l for l in Total_Loss_unfreeze], label="Train Loss full model")
+plt.plot([l for l in Validation_Loss_unfreeze], label="Validation Loss full model")
+ax.legend()
 plt.xlabel("Iterations ")
 plt.ylabel("total loss ")
 # %%
@@ -90,7 +95,7 @@ import pandas as pd
 classes = ['GLM', 'BERT freezed', 'BERT full']
 df = pd.DataFrame([
         [Total_Loss_glm[-1:][0], Validation_Loss_glm[-1:][0], Test_Loss_glm],
-        [Total_Loss[-1:][0], Validation_Loss[-1:][0], Test_unfreeze], 
+        [Total_Loss[-1:][0], Validation_Loss[-1:][0], Test_Loss], 
         [Total_Loss_unfreeze[-1:][0],  Validation_Loss_unfreeze[-1:][0], Test_Loss_unfreeze],
         ], classes, ['Loss', 'Validation Loss', 'Test Loss'])
 df
