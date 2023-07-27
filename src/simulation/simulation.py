@@ -100,3 +100,10 @@ df = pd.DataFrame([
         ], classes, ['Loss', 'Validation Loss', 'Test Loss'])
 df
 # %%
+# Save the models
+
+torch.save(model_unfreeze, './model_unfreeze')
+torch.save(model, './model')
+torch.save(glm_model, './glm_model')
+
+# %%

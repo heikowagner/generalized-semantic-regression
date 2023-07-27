@@ -155,3 +155,14 @@ def visualize_model(model, model_dataset, tokenizer):
     inputs = inputs =  tokenizer.batch_encode_plus(["Hallo", "Welt"], return_tensors='pt', padding=True, truncation=True,max_length=50, add_special_tokens = True).to(device)
     model_grp = draw_graph(model, input_data=inputs['input_ids'], expand_nested=True, covariates=x, attention_mask = inputs['attention_mask'])
     model_grp.visual_graph
+
+def visualize_attention(model, tokenizer, sentences=["This is not a test"], view="model"):
+    inputs =  tokenizer.batch_encode_plus(sentences, return_tensors='pt', padding=True, truncation=True,max_length=50, add_special_tokens = True).to(device)
+    tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0])
+    outputs = model.backbone(**inputs, output_attentions=True)  # Run model
+    attention = outputs[-1]  # Retrieve attention from model outputs
+
+    if view="model":
+        return model_view(attention, tokens)  # Display model view
+    else:
+        return head_view(attention, tokens)
