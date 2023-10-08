@@ -1,4 +1,4 @@
-# generalized-semantic-regression
+# RiskBert
 This release is a significant step forward, making it easier than ever to incorporate text fragments into various applications, such as insurance frequency and severity models, or other GLM-based models. Feel free to explore and utilize RiskBERT for your text analysis needs.
 
 Example: 
@@ -28,6 +28,8 @@ model, Total_Loss, Validation_Loss, Test_Loss = trainer(model =model,
         device = device
         )
 ```
+# Theoretical insights 
+A detailed description of the method can be found at https://www.thebigdatablog.com/generalized-semantic-regression-using-contextual-embeddings/.
 
 # Upload to pip
 ```
