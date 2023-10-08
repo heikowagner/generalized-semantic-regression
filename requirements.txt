@@ -6,3 +6,4 @@ statsmodels
 matplotlib
 torch
 accelerate
+pre-commit
