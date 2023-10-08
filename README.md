@@ -2,7 +2,7 @@
 This release is a significant step forward, making it easier than ever to incorporate text fragments into various applications, such as insurance frequency and severity models, or other GLM-based models. Feel free to explore and utilize RiskBERT for your text analysis needs.
 
 Example: 
-`pip install RiskBERT==0.0.1`
+`pip install RiskBERT==0.0.2`
 
 ```
 from transformers import AutoTokenizer
