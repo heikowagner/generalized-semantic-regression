@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader
 
 from RiskBERT import glmModel, RiskBertModel
 from RiskBERT import trainer, evaluate_model, evaluate_model_glm, print_params, visualize_model
-from data_functions import Data
+from RiskBERT.simulation.data_functions import Data
+
 
 # %%
 # Set device to gpu if available
@@ -113,8 +114,8 @@ df
 # %%
 # Save the models
 
-torch.save(model_unfreeze, "./model_unfreeze")
-torch.save(model, "./model")
-torch.save(glm_model, "./glm_model")
+# torch.save(model_unfreeze, './model_unfreeze')
+# torch.save(model, './model')
+# torch.save(glm_model, './glm_model')
 
 # %%

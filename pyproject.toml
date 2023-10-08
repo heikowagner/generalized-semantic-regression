@@ -1,7 +1,7 @@
 [project]
 name = "RiskBERT"
 description = "Generalized semantic regression with a BERT base."
-version = "0.0.1"
+version = "0.0.2"
 authors = [
     { name = "Heiko Wagner", email = "heikowagner@t-online.de" }
 ]
@@ -19,7 +19,9 @@ dependencies = [
     "statsmodels",
     "matplotlib",
     "torch",
-    "accelerate"
+    "accelerate",
+    "torchview",
+    "graphviz"
 ]
 
 [tool.black]
