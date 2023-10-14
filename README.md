@@ -37,7 +37,3 @@ twine check dist/*
 twine upload dist/*`
 ````
 
-
-gh secret set PYPI_API_TOKEN
-8? Paste your secret ********************************************************************
-9
