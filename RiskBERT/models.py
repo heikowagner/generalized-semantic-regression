@@ -42,7 +42,7 @@ class glmModel(torch.nn.Module):
 
 # https://stackoverflow.com/questions/64156202/add-dense-layer-on-top-of-huggingface-bert-model
 class RiskBertModel(BertPreTrainedModel):
-    def __init__(self, model, input_dim, dropout=0.5, freeze_bert=False, mode="CLS", hidden_layer=1):
+    def __init__(self, model, input_dim, dropout=0.5, freeze_bert=False, mode="CLS", hidden_layer=1, loss_fn=poissonLoss):
         super(RiskBertModel, self).__init__(AutoConfig.from_pretrained(model))
         self.backbone = BertModel.from_pretrained(model)
         config = AutoConfig.from_pretrained(model)
@@ -50,6 +50,7 @@ class RiskBertModel(BertPreTrainedModel):
         self.dropout = torch.nn.Dropout(dropout)
         self.output = glmModel(input_dim=config.hidden_size + input_dim, cnt_hidden_layer=hidden_layer)
         self.mode = mode
+        self.loss_fn = loss_fn
         if freeze_bert:
             for param in self.backbone.parameters():
                 param.requires_grad = False
@@ -72,6 +73,6 @@ class RiskBertModel(BertPreTrainedModel):
 
         dropped_outputs = self.dropout(bert_outputs)
         dropped_outputs = self.relu(dropped_outputs)
-        glm_model = self.output(torch.cat((covariates, dropped_outputs), 1), labels)
+        glm_model = self.output(torch.cat((covariates, dropped_outputs), 1), labels, self.loss_fn)
 
         return glm_model
