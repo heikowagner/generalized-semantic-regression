@@ -54,9 +54,16 @@ profile = "black"
 line_length = 130
 skip_gitignore = true
 
+#[tool.setuptools_scm]
+#version_file = "pkg/_version.py"
+
+#[build-system]
+#requires = [
+#    "flit_core >=3.2,<4",
+#]
+#build-backend = "flit_core.buildapi"
 
 [build-system]
 requires = [
-    "flit_core >=3.2,<4",
-]
-build-backend = "flit_core.buildapi"
+    "setuptools>=60",
+    "setuptools-scm>=8.0"]
