@@ -1,7 +1,8 @@
 [project]
 name = "RiskBERT"
 description = "Generalized semantic regression with a BERT base."
-version = "0.0.2"
+# version = "0.0.2"
+dynamic = ["version"]
 authors = [
     { name = "Heiko Wagner", email = "heikowagner@t-online.de" }
 ]
