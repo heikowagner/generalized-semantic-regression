@@ -1,5 +1,7 @@
 # generalized-semantic-regression
-This release is a significant step forward, making it easier than ever to incorporate text fragments into various applications, such as insurance frequency and severity models, or other GLM-based models. Feel free to explore and utilize RiskBERT for your text analysis needs.
+RiskBERT is a significant step forward, making it easier than ever to incorporate text fragments into various applications, such as insurance frequency and severity models, or other GLM-based models. Feel free to explore and utilize RiskBERT for your text analysis needs.
+
+To learn more about the RiskBERT implementation read this article: https://www.thebigdatablog.com/generalized-semantic-regression-using-contextual-embeddings/
 
 Example: 
 `pip install RiskBERT`
