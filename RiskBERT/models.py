@@ -1,13 +1,7 @@
 # %%
 import torch
 from transformers import BertPreTrainedModel, AutoConfig, BertModel
-
-#
-def poissonLoss(xbeta, y):
-    """Custom loss function for Poisson model."""
-    loss = -torch.mean(y * xbeta - torch.exp(xbeta))
-    return loss
-
+from .loss_functions import poissonLoss
 
 class glmModel(torch.nn.Module):
     def __init__(self, input_dim, cnt_hidden_layer=0, loss_fn=poissonLoss):

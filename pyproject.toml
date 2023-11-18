@@ -69,10 +69,12 @@ requires = [
     "setuptools-scm>=8.0",
     "setuptools-git-versioning<2"]
 
-# pyproject.toml
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+pythonpath = [
+  "."
+  ]

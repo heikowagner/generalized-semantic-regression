@@ -1,4 +1,4 @@
-from RiskBERT import poissonLoss
+from RiskBERT import poissonLoss, gammaLoss
 import torch
 
 
@@ -8,3 +8,13 @@ def test_poissonLoss():
     y = torch.Tensor([4, 3, 4, 3, 7, 8, 5])
     actual = poissonLoss(xbeta, y)
     torch.testing.assert_close(expected, actual)
+
+def test_gammaLoss():
+    expected = torch.tensor(-3028.1316)
+    xbeta = torch.Tensor([42.3, 3.7, 1.1, 39, 93.1, 99.4, 39.8])
+    y = torch.Tensor([45.3, 3.4, 4.1, 30, 73.1, 89.4, 59.8])
+    actual = gammaLoss(xbeta, y)
+    torch.testing.assert_close(expected, actual)
+
+def test_paretoLoss():
+    pass
