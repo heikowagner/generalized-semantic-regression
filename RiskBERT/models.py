@@ -3,8 +3,41 @@ import torch
 from transformers import BertPreTrainedModel, AutoConfig, BertModel
 
 #
+def lossgenerator(phi, a, b):
+    """Generates the neg. log liklyhood loss of for 
+    targets distributed by the exponential family.
+
+    f(y|theta, u) = exp((y theta - b(phi))/a(phi)+ c(y, phi) ))
+    phi  float
+        dispersion paramter
+    a
+        function
+    b   
+        function
+    
+    """
+    return 
+
 def poissonLoss(xbeta, y):
-    """Custom loss function for Poisson model."""
+    """Loss function for Poisson model."""
+    #loss = -torch.mean(y * xbeta - torch.exp(xbeta))
+    def a(phi):
+        return 1
+    
+    def b(theta):
+        return torch.exp(theta)
+
+    loss = lossgenerator(a, b)
+    return loss
+
+def gammaLoss(xbeta, y):
+    """Loss function for Poisson model."""
+    phi = 1/ alpha
+    loss = -torch.mean(y * xbeta - torch.exp(xbeta))
+    return loss
+
+def paretoLoss(xbeta, y):
+    """Loss function for Poisson model."""
     loss = -torch.mean(y * xbeta - torch.exp(xbeta))
     return loss
 
