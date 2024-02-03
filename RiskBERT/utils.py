@@ -13,9 +13,16 @@ from torchview import draw_graph
 
 def evaluate_model(model, tokenizer, x, y, sentence_sample, device):
     inputs = tokenizer.batch_encode_plus(
-        sentence_sample, return_tensors="pt", padding=True, truncation=True, max_length=50, add_special_tokens=True
+        [item for row in sentence_sample for item in row],
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=50,
+        add_special_tokens=True,
     ).to(device)
-    y_pred = model(**inputs, covariates=x, labels=y)
+    print(sentence_sample)
+    # num_sentences=[len(sentence) for sentence in sentence_sample] Does not work DataLoader destroy the structure
+    y_pred = model(**inputs, covariates=x, labels=y, num_sentences=None)
     loss = y_pred["loss"]
     return loss
 

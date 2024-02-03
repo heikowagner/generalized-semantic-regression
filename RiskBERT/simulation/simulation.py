@@ -18,9 +18,12 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
 # simulate data
-model_dataset = Data(20000, scores=torch.tensor([[0.2], [0.4]]), weigth=5)
+model_dataset = Data(1000, scores=torch.tensor([[0.2], [0.4]]), weigth=5)
 plt.plot(model_dataset.y)
 
+# %%
+sentence_sample = model_dataset.sentence_sample
+[len(sentence) for sentence in sentence_sample]
 # %%
 # choose pretrained model
 pre_model = "distilbert-base-uncased"
