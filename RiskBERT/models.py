@@ -55,15 +55,18 @@ class RiskBertModel(BertPreTrainedModel):
         covariates,
         attention_mask=None,
         token_type_ids=None,
-        position_ids=None,
+        position_ids=None,  # Don't i need positional encoding????
         labels=None,
     ):
-        outputs = self.backbone(input_ids, attention_mask=attention_mask)
-        if self.mode == "CLS":
-            sequence_output = outputs.last_hidden_state
-            bert_outputs = sequence_output[:, 0, :].view(-1, 768)
-        else:
-            bert_outputs = outputs.pooler_output
+        for input_ids_i in input_ids:
+            outputs = self.backbone(input_ids_i, attention_mask=attention_mask)
+            if self.mode == "CLS":
+                sequence_output = outputs.last_hidden_state
+                bert_outputs = bert_outputs + sequence_output[:, 0, :].view(-1, 768)
+            else:
+                bert_outputs = bert_outputs + outputs.pooler_output
+
+        bert_outputs = bert_outputs*1/len(input_ids)
 
         dropped_outputs = self.dropout(bert_outputs)
         dropped_outputs = self.relu(dropped_outputs)
