@@ -1,5 +1,4 @@
 from transformers import AutoTokenizer
-import torch
 from RiskBERT import RiskBertModel
 from RiskBERT.utils import DataConstructor
 

@@ -34,11 +34,11 @@ model, Total_Loss, Validation_Loss, Test_Loss = trainer(model =model,
         )
 
 # Predict from the model
-    my_data = DataConstructor(
-        sentences=[["Dies ist ein Test"],["Hallo Welt", "RiskBERT ist das Beste"]], 
-        covariates=[[1,5],[2,6]],
-        tokenizer= tokenizer)
-my_prediction=model(**my_data.prepare_for_model())
+my_data = DataConstructor(
+    sentences=[["Dies ist ein Test"],["Hallo Welt", "RiskBERT ist das Beste"]], 
+    covariates=[[1,5],[2,6]],
+    tokenizer= tokenizer).prepare_for_model()
+my_prediction=model(**my_data)
 
 ```
 

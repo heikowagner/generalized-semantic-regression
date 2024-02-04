@@ -180,8 +180,22 @@ class DataConstructor(Dataset):
         self.covariates = covariates
         self.labels = labels
         self.tokenizer = tokenizer
+        self.len = len(covariates)
 
-    def prepare_for_model(self):
+        # Todo: Add checks! len(covariates)=len(sentences)=len(labels) etc.
+
+    def prepare_for_model(self, index=None):
+        if index:
+            sentences = self.sentences[index]
+            covariates = self.covariates[index]
+            if self.labels:
+                labels = self.labels[index]
+        else:
+            sentences = self.sentences
+            covariates = self.covariates
+            if self.labels:
+                labels = self.labels
+
         inputs = self.tokenizer.batch_encode_plus(
             [item for row in self.sentences for item in row],
             return_tensors="pt",
@@ -190,14 +204,22 @@ class DataConstructor(Dataset):
             max_length=50,
             add_special_tokens=True,
         )
-        num_sentences = [len(sentence) for sentence in self.sentences]
+        num_sentences = [len(sentence) for sentence in sentences]
         print(inputs)
         if self.labels:
             return {
                 **inputs,
-                "covariates": torch.Tensor(self.covariates),
-                "labels": torch.Tensor(self.labels),
+                "covariates": torch.Tensor(covariates),
+                "labels": torch.Tensor(labels),
                 "num_sentences": num_sentences,
             }
         else:
             return {**inputs, "covariates": torch.Tensor(self.covariates), "num_sentences": num_sentences}
+
+    # Getter
+    def __getitem__(self, index):
+        return prepare_for_model(index)
+
+    # getting data length
+    def __len__(self):
+        return self.len
