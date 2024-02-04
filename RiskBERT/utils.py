@@ -7,11 +7,12 @@ from transformers import get_linear_schedule_with_warmup
 from transformers import AutoTokenizer
 import torchvision
 from torchview import draw_graph
+from torch.utils.data import Dataset
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, tokenizer, x, y, sentence_sample, device):
+def evaluate_model(model, tokenizer, x, y, sentence_sample, device, num_sentences=None):
     inputs = tokenizer.batch_encode_plus(
         [item for row in sentence_sample for item in row],
         return_tensors="pt",
@@ -20,9 +21,7 @@ def evaluate_model(model, tokenizer, x, y, sentence_sample, device):
         max_length=50,
         add_special_tokens=True,
     ).to(device)
-    print(sentence_sample)
-    # num_sentences=[len(sentence) for sentence in sentence_sample] Does not work DataLoader destroy the structure
-    y_pred = model(**inputs, covariates=x, labels=y, num_sentences=None)
+    y_pred = model(**inputs, covariates=x, labels=y, num_sentences=num_sentences)
     loss = y_pred["loss"]
     return loss
 
@@ -46,11 +45,8 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
 
     epochs = epochs
     train_batches = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
     val_batches = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
-
     test_batches = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
     total_steps = len(train_batches) * epochs
 
     scheduler = get_linear_schedule_with_warmup(
@@ -64,10 +60,16 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         # reset total loss for each epoch
         total_loss = 0
         model.train()  # set model in train mode
-        for x, y, sentence_sample, embeddingsx in train_batches:
+        for x, y, sentence_sample, embeddingsx, num_sentences in train_batches:
             optimizer.zero_grad()
             loss = evaluate_fkt(
-                model=model, tokenizer=tokenizer, x=x.to(device), y=y.to(device), sentence_sample=sentence_sample, device=device
+                model=model,
+                tokenizer=tokenizer,
+                x=x.to(device),
+                y=y.to(device),
+                sentence_sample=sentence_sample,
+                device=device,
+                num_sentences=num_sentences,
             )
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -80,7 +82,7 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         model.eval()  # set model in eval mode
 
         with torch.no_grad():
-            for x, y, sentence_sample, embeddingsx in val_batches:
+            for x, y, sentence_sample, embeddingsx, num_sentences in val_batches:
                 v_loss = evaluate_fkt(
                     model=model,
                     tokenizer=tokenizer,
@@ -88,6 +90,7 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
                     y=y.to(device),
                     sentence_sample=sentence_sample,
                     device=device,
+                    num_sentences=num_sentences,
                 )
                 val_loss += v_loss.item()
 
@@ -103,9 +106,15 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     model.eval()  # set model in eval mode
 
     with torch.no_grad():
-        for x, y, sentence_sample, embeddingsx in test_batches:
+        for x, y, sentence_sample, embeddingsx, num_sentences in test_batches:
             t_loss = evaluate_fkt(
-                model=model, tokenizer=tokenizer, x=x.to(device), y=y.to(device), sentence_sample=sentence_sample, device=device
+                model=model,
+                tokenizer=tokenizer,
+                x=x.to(device),
+                y=y.to(device),
+                sentence_sample=sentence_sample,
+                device=device,
+                num_sentences=num_sentences,
             )
             test_loss += t_loss.item()
     Test_Loss = test_loss / len(test_batches)
@@ -128,21 +137,14 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
 
 def print_params(model):
     params = list(model.named_parameters())
-
     print("The BERT model has {:} different named parameters.\n".format(len(params)))
-
     print("==== Embedding Layer ====\n")
-
     for p in params[0:5]:
         print("{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
-
     print("\n==== First Transformer ====\n")
-
     for p in params[5:21]:
         print("{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
-
     print("\n==== Output Layer ====\n")
-
     for p in params[-4:]:
         print("{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
 
@@ -170,3 +172,32 @@ def visualize_attention(model, tokenizer, sentences=["This is not a test"], view
         return model_view(attention, tokens)  # Display model view
     else:
         return head_view(attention, tokens)
+
+
+class DataConstructor(Dataset):
+    def __init__(self, sentences, covariates, labels=None, tokenizer=None):
+        self.sentences = sentences
+        self.covariates = covariates
+        self.labels = labels
+        self.tokenizer = tokenizer
+
+    def prepare_for_model(self):
+        inputs = self.tokenizer.batch_encode_plus(
+            [item for row in self.sentences for item in row],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=50,
+            add_special_tokens=True,
+        )
+        num_sentences = [len(sentence) for sentence in self.sentences]
+        print(inputs)
+        if self.labels:
+            return {
+                **inputs,
+                "covariates": torch.Tensor(self.covariates),
+                "labels": torch.Tensor(self.labels),
+                "num_sentences": num_sentences,
+            }
+        else:
+            return {**inputs, "covariates": torch.Tensor(self.covariates), "num_sentences": num_sentences}

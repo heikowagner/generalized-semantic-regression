@@ -63,6 +63,7 @@ class RiskBertModel(BertPreTrainedModel):
         N = len(covariates)
         if num_sentences is None:
             num_sentences = [1] * N
+
         outputs = self.backbone(input_ids, attention_mask=attention_mask)
         if self.mode == "CLS":
             sequence_output = outputs.last_hidden_state

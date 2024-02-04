@@ -79,10 +79,11 @@ class Data(Dataset):
         self.lambda_i = torch.mm(self.x, self.w) + torch.mm(self.embeddings, self.embed_scores) + self.b
         self.y = torch.poisson(torch.exp(self.lambda_i))
         self.len = self.x.shape[0]
+        self.num_sentences = num_sentences
 
     # Getter
     def __getitem__(self, index):
-        return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index]
+        return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index], self.num_sentences[index]
 
     # getting data length
     def __len__(self):

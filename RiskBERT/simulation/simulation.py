@@ -122,3 +122,19 @@ df
 # torch.save(glm_model, './glm_model')
 
 # %%
+# Predict from the model
+
+from RiskBERT.utils import DataConstructor
+
+pre_model = "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(pre_model)
+my_data = DataConstructor(
+    sentences=[["Dies ist ein Test"], ["Hallo Welt", "RiskBERT ist das beste BERT Modell"]],
+    covariates=[[1, 5], [2, 6]],
+    tokenizer=tokenizer,
+)
+
+
+model = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=True, mode="CLS")
+# %%
+model(**my_data.prepare_for_model())
