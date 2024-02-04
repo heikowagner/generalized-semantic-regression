@@ -7,3 +7,4 @@ matplotlib
 torch
 accelerate
 pre-commit
+torchvision

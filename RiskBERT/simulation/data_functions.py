@@ -47,7 +47,9 @@ def generate_training(N=5000, seed=123):
 # %%
 class Data(Dataset):
     # Constructor
-    def __init__(self, N=5000, scores=torch.tensor([[1.0], [3.0]]), intercept=0, weigth=1):
+    def __init__(self, N=5000, num_sentences=None, scores=torch.tensor([[1.0], [3.0]]), intercept=0, weigth=1):
+        if num_sentences is None:
+            num_sentences = [1] * N
         self.x = torch.zeros(N, len(scores))
         for i in range(0, len(scores)):
             self.x[:, i] = torch.randn(N)  # torch.arange(-2, 2, 0.1)
@@ -55,19 +57,33 @@ class Data(Dataset):
         self.w = scores
 
         sentence_embeddings = sentence_generator(weigth)
-        self.sentence_sample = sentence_embeddings.sample(N, replace=True).reset_index()
-        self.embeddings = torch.tensor(np.array(list(self.sentence_sample["Embeddings"])))
-        # self.embed_scores= torch.randn(len(sentence_embeddings["Embeddings"][0]),1)
+
+        total_num_sentences = sum(num_sentences)
+        self.sentence_sample = sentence_embeddings.sample(N * total_num_sentences, replace=True).reset_index()
+
+        # We have to pack embeddings and scores according to the number of sentences
+        i = 0
+        m = 0
+        embeddings = [None] * N
+        sentences = [None] * N
+        for j in num_sentences:
+            sentences[m] = list(self.sentence_sample["Sentences"][i : i + j])
+            embeddings[m] = np.sum(self.sentence_sample["Embeddings"][i : i + j], axis=0)
+            i = i + j
+            m = m + 1
+        self.embeddings = torch.tensor(embeddings)
         self.embed_scores = torch.rand(len(sentence_embeddings["Embeddings"][0]), 1)
-        # self.embed_scores= torch.ones(len(sentence_embeddings["Embeddings"][0]),1)/len(sentence_embeddings["Embeddings"][0])
+        self.sentence_sample = sentences
+
         self.b = intercept
         self.lambda_i = torch.mm(self.x, self.w) + torch.mm(self.embeddings, self.embed_scores) + self.b
         self.y = torch.poisson(torch.exp(self.lambda_i))
         self.len = self.x.shape[0]
+        self.num_sentences = num_sentences
 
     # Getter
     def __getitem__(self, index):
-        return self.x[index], self.y[index], self.sentence_sample["Sentences"][index], self.embeddings[index]
+        return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index], self.num_sentences[index]
 
     # getting data length
     def __len__(self):

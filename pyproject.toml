@@ -22,7 +22,8 @@ dependencies = [
     "torch",
     "accelerate",
     "torchview",
-    "graphviz"
+    "graphviz",
+    "torchvision"
 ]
 
 [tool.black]

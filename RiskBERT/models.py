@@ -3,6 +3,7 @@ import torch
 from transformers import BertPreTrainedModel, AutoConfig, BertModel
 from .loss_functions import poissonLoss
 
+
 class glmModel(torch.nn.Module):
     def __init__(self, input_dim, cnt_hidden_layer=0, loss_fn=poissonLoss):
         super(glmModel, self).__init__()
@@ -57,7 +58,12 @@ class RiskBertModel(BertPreTrainedModel):
         token_type_ids=None,
         position_ids=None,
         labels=None,
+        num_sentences=None,
     ):
+        N = len(covariates)
+        if num_sentences is None:
+            num_sentences = [1] * N
+
         outputs = self.backbone(input_ids, attention_mask=attention_mask)
         if self.mode == "CLS":
             sequence_output = outputs.last_hidden_state
@@ -65,8 +71,16 @@ class RiskBertModel(BertPreTrainedModel):
         else:
             bert_outputs = outputs.pooler_output
 
-        dropped_outputs = self.dropout(bert_outputs)
+        i = 0
+        m = 0
+        sum_bert_outputs = [None] * N
+        for j in num_sentences:
+            sum_bert_outputs[m] = torch.sum(bert_outputs[i : i + j, :], dim=0)
+            i = i + j
+            m = m + 1
+
+        dropped_outputs = self.dropout(torch.stack(sum_bert_outputs))
         dropped_outputs = self.relu(dropped_outputs)
-        glm_model = self.output(torch.cat((covariates, dropped_outputs), 1), labels, self.loss_fn)
+        glm_model = self.output(torch.cat((covariates, dropped_outputs), 1), labels)
 
         return glm_model

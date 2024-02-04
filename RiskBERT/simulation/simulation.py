@@ -18,9 +18,12 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
 # simulate data
-model_dataset = Data(20000, scores=torch.tensor([[0.2], [0.4]]), weigth=5)
+model_dataset = Data(1000, scores=torch.tensor([[0.2], [0.4]]), weigth=5)
 plt.plot(model_dataset.y)
 
+# %%
+sentence_sample = model_dataset.sentence_sample
+[len(sentence) for sentence in sentence_sample]
 # %%
 # choose pretrained model
 pre_model = "distilbert-base-uncased"
@@ -119,3 +122,19 @@ df
 # torch.save(glm_model, './glm_model')
 
 # %%
+# Predict from the model
+
+from RiskBERT.utils import DataConstructor
+
+pre_model = "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(pre_model)
+my_data = DataConstructor(
+    sentences=[["Dies ist ein Test"], ["Hallo Welt", "RiskBERT ist das beste BERT Modell"]],
+    covariates=[[1, 5], [2, 6]],
+    tokenizer=tokenizer,
+)
+
+
+model = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=True, mode="CLS")
+# %%
+model(**my_data.prepare_for_model())
