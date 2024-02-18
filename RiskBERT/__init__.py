@@ -6,10 +6,9 @@ from .utils import (
     visualize_model,
     print_params,
     trainer,
-    evaluate_model_glm,
     evaluate_model,
 )
-from .simulation.data_functions import Data
+from .simulation.data_functions import SimulatedData
 
 __all__ = [
     "poissonLoss",
@@ -19,10 +18,10 @@ __all__ = [
     "visualize_model",
     "print_params",
     "trainer",
-    "evaluate_model_glm",
     "evaluate_model",
-    "Data",
+    "SimulatedData",
     "generalExponentialLoss",
     "gammaLoss",
-    "paretoLoss" "DataConstructor",
+    "paretoLoss",
+    "DataConstructor",
 ]

@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
+from RiskBERT import DataConstructor
 
 # %%
 
@@ -45,9 +46,18 @@ def generate_training(N=5000, seed=123):
 
 
 # %%
-class Data(Dataset):
+class SimulatedData(DataConstructor):
     # Constructor
-    def __init__(self, N=5000, num_sentences=None, scores=torch.tensor([[1.0], [3.0]]), intercept=0, weigth=1):
+    def __init__(
+        self,
+        N=5000,
+        num_sentences=None,
+        scores=torch.tensor([[1.0], [3.0]]),
+        intercept=0,
+        weigth=1,
+        tokenizer=None,
+        device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    ):
         if num_sentences is None:
             num_sentences = [1] * N
         self.x = torch.zeros(N, len(scores))
@@ -73,18 +83,29 @@ class Data(Dataset):
             m = m + 1
         self.embeddings = torch.tensor(embeddings)
         self.embed_scores = torch.rand(len(sentence_embeddings["Embeddings"][0]), 1)
-        self.sentence_sample = sentences
+        # self.sentence_sample = sentences
 
         self.b = intercept
         self.lambda_i = torch.mm(self.x, self.w) + torch.mm(self.embeddings, self.embed_scores) + self.b
-        self.y = torch.poisson(torch.exp(self.lambda_i))
+        # self.y = torch.poisson(torch.exp(self.lambda_i))
         self.len = self.x.shape[0]
-        self.num_sentences = num_sentences
+        # self.num_sentences = num_sentences
 
-    # Getter
-    def __getitem__(self, index):
-        return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index], self.num_sentences[index]
+        self.sentences = sentences
+        self.covariates = self.x.tolist()
+        self.labels = torch.poisson(torch.exp(self.lambda_i)).tolist()
+        self.tokenizer = tokenizer
+        self.len = len(self.x)
+        self.device = device
 
-    # getting data length
-    def __len__(self):
-        return self.len
+        self.inputs = tokenizer.batch_encode_plus(
+            [item for row in sentences for item in row],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=50,
+            add_special_tokens=True,
+        ).to(device)
+
+
+# return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index], self.num_sentences[index]

@@ -41,6 +41,10 @@ my_data = DataConstructor(
 my_prediction=model(**my_data)
 
 ```
+# To work in dev-mode
+```
+pip install -e .
+```
 
 # Upload to pip
 ```

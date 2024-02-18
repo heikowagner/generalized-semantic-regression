@@ -12,27 +12,13 @@ from torch.utils.data import Dataset
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, tokenizer, x, y, sentence_sample, device, num_sentences=None):
-    inputs = tokenizer.batch_encode_plus(
-        [item for row in sentence_sample for item in row],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=50,
-        add_special_tokens=True,
-    ).to(device)
-    y_pred = model(**inputs, covariates=x, labels=y, num_sentences=num_sentences)
+def evaluate_model(model, dataset):
+    y_pred = model(**dataset)
     loss = y_pred["loss"]
     return loss
 
 
-def evaluate_model_glm(model, x, y, **kwargs):
-    y_pred = model(covariates=x, labels=y)
-    loss = y_pred["loss"]
-    return loss
-
-
-def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=100, optimizer=None, seed=123, device="cuda"):
+def trainer(model, model_dataset, epochs, evaluate_fkt=evaluate_model, batch_size=100, optimizer=None, seed=123, device="cuda"):
 
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
         model_dataset,
@@ -55,22 +41,13 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     Loss = []
     Total_Loss = []
     Validation_Loss = []
-    model.to(device)
     for epoch in range(epochs):
         # reset total loss for each epoch
         total_loss = 0
         model.train()  # set model in train mode
-        for x, y, sentence_sample, embeddingsx, num_sentences in train_batches:
+        for dataset in train_batches:
             optimizer.zero_grad()
-            loss = evaluate_fkt(
-                model=model,
-                tokenizer=tokenizer,
-                x=x.to(device),
-                y=y.to(device),
-                sentence_sample=sentence_sample,
-                device=device,
-                num_sentences=num_sentences,
-            )
+            loss = evaluate_fkt(model=model, dataset=dataset)
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -82,16 +59,8 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         model.eval()  # set model in eval mode
 
         with torch.no_grad():
-            for x, y, sentence_sample, embeddingsx, num_sentences in val_batches:
-                v_loss = evaluate_fkt(
-                    model=model,
-                    tokenizer=tokenizer,
-                    x=x.to(device),
-                    y=y.to(device),
-                    sentence_sample=sentence_sample,
-                    device=device,
-                    num_sentences=num_sentences,
-                )
+            for dataset in val_batches:
+                v_loss = evaluate_fkt(model=model, dataset=dataset)
                 val_loss += v_loss.item()
 
         print(f"epoch = {epoch}, loss = {loss}")
@@ -106,16 +75,8 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     model.eval()  # set model in eval mode
 
     with torch.no_grad():
-        for x, y, sentence_sample, embeddingsx, num_sentences in test_batches:
-            t_loss = evaluate_fkt(
-                model=model,
-                tokenizer=tokenizer,
-                x=x.to(device),
-                y=y.to(device),
-                sentence_sample=sentence_sample,
-                device=device,
-                num_sentences=num_sentences,
-            )
+        for dataset in test_batches:
+            t_loss = evaluate_fkt(model=model, dataset=dataset)
             test_loss += t_loss.item()
     Test_Loss = test_loss / len(test_batches)
 
@@ -175,51 +136,65 @@ def visualize_attention(model, tokenizer, sentences=["This is not a test"], view
 
 
 class DataConstructor(Dataset):
-    def __init__(self, sentences, covariates, labels=None, tokenizer=None):
+    def __init__(
+        self,
+        sentences,
+        covariates,
+        labels=None,
+        tokenizer=None,
+        device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    ):
         self.sentences = sentences
         self.covariates = covariates
         self.labels = labels
-        self.tokenizer = tokenizer
         self.len = len(covariates)
-
-        # Todo: Add checks! len(covariates)=len(sentences)=len(labels) etc.
-
-    def prepare_for_model(self, index=None):
-        if index:
-            sentences = self.sentences[index]
-            covariates = self.covariates[index]
-            if self.labels:
-                labels = self.labels[index]
-        else:
-            sentences = self.sentences
-            covariates = self.covariates
-            if self.labels:
-                labels = self.labels
-
-        inputs = self.tokenizer.batch_encode_plus(
-            [item for row in self.sentences for item in row],
+        self.device = device
+        self.inputs = tokenizer.batch_encode_plus(
+            [item for row in sentences for item in row],
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=50,
             add_special_tokens=True,
-        )
+        ).to(device)
+
+        # Todo: Add checks! len(covariates)=len(sentences)=len(labels) etc.
+
+    def prepare_for_model(self, index=None):
+        if index or index == 0:
+
+            inputs = {"input_ids": self.inputs["input_ids"][index], "attention_mask": self.inputs["attention_mask"][index]}
+
+            covariates = self.covariates[index]
+            sentences = [self.sentences[index]]
+            if self.labels:
+                labels = self.labels[index]
+        else:
+            inputs = self.inputs
+            sentences = self.sentences
+            covariates = self.covariates
+            if self.labels:
+                labels = self.labels
         num_sentences = [len(sentence) for sentence in sentences]
-        print(inputs)
+
         if self.labels:
+            print(inputs)
             return {
                 **inputs,
-                "covariates": torch.Tensor(covariates),
-                "labels": torch.Tensor(labels),
+                "covariates": torch.Tensor(covariates).to(self.device),
+                "labels": torch.Tensor(labels).to(self.device),
                 "num_sentences": num_sentences,
             }
         else:
-            return {**inputs, "covariates": torch.Tensor(self.covariates), "num_sentences": num_sentences}
+            return {**inputs, "covariates": torch.Tensor(self.covariates).to(self.device), "num_sentences": num_sentences}
 
     # Getter
     def __getitem__(self, index):
-        return prepare_for_model(index)
+        return self.prepare_for_model(index)
 
     # getting data length
     def __len__(self):
         return self.len
+
+
+# %%

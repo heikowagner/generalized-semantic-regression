@@ -5,7 +5,7 @@ from .loss_functions import poissonLoss
 
 
 class glmModel(torch.nn.Module):
-    def __init__(self, input_dim, cnt_hidden_layer=0, loss_fn=poissonLoss):
+    def __init__(self, input_dim, cnt_hidden_layer=0, loss_fn=poissonLoss, **kwargs):
         super(glmModel, self).__init__()
         self.output = torch.nn.Linear(input_dim, 1)
 
@@ -14,11 +14,7 @@ class glmModel(torch.nn.Module):
 
         self.loss_fn = loss_fn
 
-    def forward(
-        self,
-        covariates,
-        labels=None,
-    ):
+    def forward(self, covariates, labels=None, **kwargs):
         for i, l in enumerate(self.hidden_layer):
             covariates = self.hidden_layer[i](covariates)
             covariates = self.activation_functions[i](covariates)
@@ -37,7 +33,9 @@ class glmModel(torch.nn.Module):
 
 # https://stackoverflow.com/questions/64156202/add-dense-layer-on-top-of-huggingface-bert-model
 class RiskBertModel(BertPreTrainedModel):
-    def __init__(self, model, input_dim, dropout=0.5, freeze_bert=False, mode="CLS", hidden_layer=1, loss_fn=poissonLoss):
+    def __init__(
+        self, model, input_dim, dropout=0.5, freeze_bert=False, mode="CLS", hidden_layer=1, loss_fn=poissonLoss, **kwargs
+    ):
         super(RiskBertModel, self).__init__(AutoConfig.from_pretrained(model))
         self.backbone = BertModel.from_pretrained(model)
         config = AutoConfig.from_pretrained(model)
@@ -59,6 +57,7 @@ class RiskBertModel(BertPreTrainedModel):
         position_ids=None,
         labels=None,
         num_sentences=None,
+        **kwargs,
     ):
         N = len(covariates)
         if num_sentences is None:

@@ -8,8 +8,8 @@ import pandas as pd
 from torch.utils.data import DataLoader
 
 from RiskBERT import glmModel, RiskBertModel
-from RiskBERT import trainer, evaluate_model, evaluate_model_glm, print_params, visualize_model
-from RiskBERT.simulation.data_functions import Data
+from RiskBERT import trainer, evaluate_model, print_params, visualize_model
+from RiskBERT.simulation.data_functions import SimulatedData
 
 
 # %%
@@ -17,28 +17,92 @@ from RiskBERT.simulation.data_functions import Data
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # %%
-# simulate data
-model_dataset = Data(1000, scores=torch.tensor([[0.2], [0.4]]), weigth=5)
-plt.plot(model_dataset.y)
+
+
+from RiskBERT.utils import DataConstructor
+
+pre_model = "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(pre_model)
+my_data = DataConstructor(
+    sentences=[["Dies ist ein Test"], ["Hallo Welt", "RiskBERT ist das beste BERT Modell"]],
+    covariates=[[1, 5], [2, 6]],
+    labels=[1, 6],
+    tokenizer=tokenizer,
+)
+
+model = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=True, mode="CLS")
+model.to(device)
+# %%
+model(**my_data.prepare_for_model())
 
 # %%
-sentence_sample = model_dataset.sentence_sample
-[len(sentence) for sentence in sentence_sample]
+glm_model = glmModel(2).to(device)
+evaluate_model(glm_model, my_data.prepare_for_model())
+
+
+# %%
+# %%
+# simulate data
+model_dataset = SimulatedData(1000, scores=torch.tensor([[0.2], [0.4]]), weigth=5, tokenizer=tokenizer)
+plt.plot(model_dataset.labels)
+
+# my_data_2 = DataConstructor(
+#    sentences=model_dataset.sentences,
+#    covariates=model_dataset.covariates.tolist(),
+#    labels=model_dataset.labels.tolist(),
+#    tokenizer=tokenizer,
+# )
+
+# %%
+model_dataset.prepare_for_model()
+
+# %%
+model_dataset.__getitem__(1)
+
+
+# %%
+print(model_dataset.__getitem__(1)["input_ids"])
+print(model_dataset.prepare_for_model()["input_ids"])
+
 # %%
 # choose pretrained model
 pre_model = "distilbert-base-uncased"
 
 # %%
+i = 0
+data_loader = DataLoader(model_dataset, batch_size=200, shuffle=True)
 
-glm_model = glmModel(2)
 
+# %%
+
+train_features = next(iter(data_loader))
+# %%
+
+print(train_features)
+# %%
+evaluate_model(model=model.to(device), dataset=train_features)
+
+
+# %%
+for dataset in data_loader:
+    print(dataset)
+    print(i)
+    i = i + 1
+    loss = evaluate_model(model=model.to(device), dataset=dataset)
+
+# %%
+data_loader
+
+# %%
+
+glm_model = glmModel(2).to(device)
+# %%
 glm_model, Total_Loss_glm, Validation_Loss_glm, Test_Loss_glm = trainer(
     model=glm_model,
     model_dataset=model_dataset,
     epochs=5,
-    evaluate_fkt=evaluate_model_glm,
-    batch_size=500,
-    tokenizer=AutoTokenizer.from_pretrained(pre_model),
+    batch_size=1000,
+    # tokenizer=AutoTokenizer.from_pretrained(pre_model),
     optimizer=torch.optim.SGD(glm_model.parameters(), lr=0.001),
     device=device,
 )
@@ -50,7 +114,6 @@ model, Total_Loss, Validation_Loss, Test_Loss = trainer(
     epochs=5,
     batch_size=1000,
     evaluate_fkt=evaluate_model,
-    tokenizer=AutoTokenizer.from_pretrained(pre_model),
     optimizer=torch.optim.SGD(model.parameters(), lr=0.001),
     device=device,
 )
