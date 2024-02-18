@@ -24,5 +24,6 @@ __all__ = [
     "Data",
     "generalExponentialLoss",
     "gammaLoss",
-    "paretoLoss" "DataConstructor",
+    "paretoLoss",
+    "DataConstructor",
 ]

@@ -1,10 +1,10 @@
 # %%
 import numpy as np
 import torch
-from torch.utils.data import Dataset
 import pandas as pd
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
+from RiskBERT import DataConstructor
 
 # %%
 
@@ -45,7 +45,7 @@ def generate_training(N=5000, seed=123):
 
 
 # %%
-class Data(Dataset):
+class Data(DataConstructor):
     # Constructor
     def __init__(self, N=5000, num_sentences=None, scores=torch.tensor([[1.0], [3.0]]), intercept=0, weigth=1):
         if num_sentences is None:
@@ -81,10 +81,6 @@ class Data(Dataset):
         self.len = self.x.shape[0]
         self.num_sentences = num_sentences
 
-    # Getter
-    def __getitem__(self, index):
-        return self.x[index], self.y[index], self.sentence_sample[index], self.embeddings[index], self.num_sentences[index]
-
-    # getting data length
-    def __len__(self):
-        return self.len
+        self.labels = self.y
+        self.covariates = self.x
+        self.sentences = self.sentence_sample
