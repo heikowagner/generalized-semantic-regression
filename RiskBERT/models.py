@@ -43,9 +43,9 @@ class RiskBertModel(BertPreTrainedModel):
         config = AutoConfig.from_pretrained(model)
         self.relu = self.relu = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(dropout)
-        self.output = glmModel(input_dim=config.hidden_size + input_dim, cnt_hidden_layer=hidden_layer)
-        self.mode = mode
         self.loss_fn = loss_fn
+        self.output = glmModel(input_dim=config.hidden_size + input_dim, cnt_hidden_layer=hidden_layer, loss_fn=loss_fn)
+        self.mode = mode
         if freeze_bert:
             for param in self.backbone.parameters():
                 param.requires_grad = False

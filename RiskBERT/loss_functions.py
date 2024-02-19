@@ -56,3 +56,16 @@ def paretoLoss(xbeta, y):
     a = 1
     loss = -torch.mean(torch.log(xbeta) - torch.mul((a + 1), torch.log(y)))
     return loss
+
+
+# %%
+def normalLoss(xbeta, y):
+    """Loss function for Normal model.
+    The MLE estimator uses sigma=1. For deviation this results in a level effect,
+    to get the correct estimator for sigma, compute \hat{sigma}=n^-1 \sum(x_i - \hat{mu}) ex post.
+    """
+    loss = torch.mean(torch.square(xbeta - y))
+    return loss
+
+
+# normalLoss(torch.Tensor([1,2,4,5,6]), torch.Tensor([1,2,4,5,6]))

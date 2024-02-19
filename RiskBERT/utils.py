@@ -1,11 +1,8 @@
 # %%
 import torch
 import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
-from transformers import AutoTokenizer
-import torchvision
 from torchview import draw_graph
 from torch.utils.data import Dataset
 
@@ -18,7 +15,7 @@ def evaluate_model(model, tokenizer, x, y, sentence_sample, device, num_sentence
         return_tensors="pt",
         padding=True,
         truncation=True,
-        max_length=50,
+        # max_length=50,
         add_special_tokens=True,
     ).to(device)
     y_pred = model(**inputs, covariates=x, labels=y, num_sentences=num_sentences)
@@ -36,7 +33,11 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
 
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
         model_dataset,
-        (int(len(model_dataset) * 0.7), int(len(model_dataset) * 0.2), int(len(model_dataset) * 0.1)),
+        (
+            int(len(model_dataset) * 0.7),
+            int(len(model_dataset) * 0.2),
+            len(model_dataset) - int(len(model_dataset) * 0.7) - int(len(model_dataset) * 0.2),
+        ),
         generator=torch.Generator().manual_seed(seed),
     )
 
@@ -163,7 +164,7 @@ def visualize_model(model, model_dataset, tokenizer, device):
 def visualize_attention(model, tokenizer, sentences=["This is not a test"], view="model"):
     inputs = tokenizer.batch_encode_plus(
         sentences, return_tensors="pt", padding=True, truncation=True, max_length=50, add_special_tokens=True
-    ).to(device)
+    )
     tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0])
     outputs = model.backbone(**inputs, output_attentions=True)  # Run model
     attention = outputs[-1]  # Retrieve attention from model outputs
@@ -175,27 +176,30 @@ def visualize_attention(model, tokenizer, sentences=["This is not a test"], view
 
 
 class DataConstructor(Dataset):
-    def __init__(self, sentences, covariates, labels=None, tokenizer=None):
+    def __init__(
+        self,
+        sentences,
+        covariates,
+        labels=None,
+        tokenizer=None,
+        device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    ):
         self.sentences = sentences
-        self.covariates = covariates
-        self.labels = labels
+        self.covariates = torch.Tensor(covariates).to(device)
+        if labels:
+            self.labels = torch.Tensor(labels).to(device)
+            self.has_label = True
+        else:
+            self.labels = None
+            self.has_label = False
         self.tokenizer = tokenizer
         self.len = len(covariates)
-
+        self.embeddings = [0] * len(covariates)
+        self.num_sentences = [len(sentence) for sentence in sentences]
+        self.device = device
         # Todo: Add checks! len(covariates)=len(sentences)=len(labels) etc.
 
     def prepare_for_model(self, index=None):
-        if index:
-            sentences = self.sentences[index]
-            covariates = self.covariates[index]
-            if self.labels:
-                labels = self.labels[index]
-        else:
-            sentences = self.sentences
-            covariates = self.covariates
-            if self.labels:
-                labels = self.labels
-
         inputs = self.tokenizer.batch_encode_plus(
             [item for row in self.sentences for item in row],
             return_tensors="pt",
@@ -203,22 +207,26 @@ class DataConstructor(Dataset):
             truncation=True,
             max_length=50,
             add_special_tokens=True,
-        )
-        num_sentences = [len(sentence) for sentence in sentences]
-        print(inputs)
-        if self.labels:
+        ).to(self.device)
+        if not self.has_label:
+            return {**inputs, "covariates": self.covariates, "num_sentences": self.num_sentences}
+        else:
             return {
                 **inputs,
-                "covariates": torch.Tensor(covariates),
-                "labels": torch.Tensor(labels),
-                "num_sentences": num_sentences,
+                "covariates": self.covariates,
+                "labels": self.labels,
+                "num_sentences": self.num_sentences,
             }
-        else:
-            return {**inputs, "covariates": torch.Tensor(self.covariates), "num_sentences": num_sentences}
 
     # Getter
     def __getitem__(self, index):
-        return prepare_for_model(index)
+        return (
+            self.covariates[index],
+            self.labels[index],
+            self.sentences[index],
+            self.embeddings[index],
+            self.num_sentences[index],
+        )
 
     # getting data length
     def __len__(self):

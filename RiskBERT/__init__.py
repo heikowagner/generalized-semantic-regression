@@ -1,5 +1,5 @@
 from .models import RiskBertModel, glmModel
-from .loss_functions import poissonLoss, generalExponentialLoss, gammaLoss, paretoLoss
+from .loss_functions import poissonLoss, generalExponentialLoss, gammaLoss, paretoLoss, normalLoss
 from .utils import (
     DataConstructor,
     visualize_attention,
@@ -24,5 +24,7 @@ __all__ = [
     "Data",
     "generalExponentialLoss",
     "gammaLoss",
-    "paretoLoss" "DataConstructor",
+    "paretoLoss",
+    "DataConstructor",
+    "normalLoss",
 ]
