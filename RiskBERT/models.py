@@ -14,11 +14,7 @@ class glmModel(torch.nn.Module):
 
         self.loss_fn = loss_fn
 
-    def forward(
-        self,
-        covariates,
-        labels=None,
-    ):
+    def forward(self, covariates, labels=None, **kwargs):
         for i, l in enumerate(self.hidden_layer):
             covariates = self.hidden_layer[i](covariates)
             covariates = self.activation_functions[i](covariates)
@@ -59,6 +55,7 @@ class RiskBertModel(BertPreTrainedModel):
         position_ids=None,
         labels=None,
         num_sentences=None,
+        **kwargs,
     ):
         N = len(covariates)
         if num_sentences is None:

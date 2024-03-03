@@ -79,8 +79,9 @@ class Data(DataConstructor):
         self.lambda_i = torch.mm(self.x, self.w) + torch.mm(self.embeddings, self.embed_scores) + self.b
         self.y = torch.poisson(torch.exp(self.lambda_i))
         self.len = self.x.shape[0]
-        self.num_sentences = num_sentences
+        self.num_sentences = np.array(num_sentences)
 
-        self.labels = self.y
-        self.covariates = self.x
-        self.sentences = self.sentence_sample
+        self.embeddings = self.embeddings.numpy()
+        self.labels = self.y.numpy()
+        self.covariates = self.x.numpy()
+        self.sentences = np.array(self.sentence_sample)

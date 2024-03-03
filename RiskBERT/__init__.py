@@ -6,8 +6,6 @@ from .utils import (
     visualize_model,
     print_params,
     trainer,
-    evaluate_model_glm,
-    evaluate_model,
 )
 from .simulation.data_functions import Data
 
@@ -19,8 +17,6 @@ __all__ = [
     "visualize_model",
     "print_params",
     "trainer",
-    "evaluate_model_glm",
-    "evaluate_model",
     "Data",
     "generalExponentialLoss",
     "gammaLoss",

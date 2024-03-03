@@ -5,32 +5,78 @@ from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 from torchview import draw_graph
 from torch.utils.data import Dataset
+import numpy as np
 
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate_model(model, tokenizer, x, y, sentence_sample, device, num_sentences=None):
-    inputs = tokenizer.batch_encode_plus(
-        [item for row in sentence_sample for item in row],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        # max_length=50,
-        add_special_tokens=True,
-    ).to(device)
-    y_pred = model(**inputs, covariates=x, labels=y, num_sentences=num_sentences)
-    loss = y_pred["loss"]
-    return loss
+class MultiEpochsDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._DataLoader__initialized = False
+        self.batch_sampler = _RepeatSampler(self.batch_sampler)
+        self._DataLoader__initialized = True
+        self.iterator = super().__iter__()
+
+    def __len__(self):
+        return len(self.batch_sampler.sampler)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield next(self.iterator)
 
 
-def evaluate_model_glm(model, x, y, **kwargs):
-    y_pred = model(covariates=x, labels=y)
-    loss = y_pred["loss"]
-    return loss
+class collate:
+    def __init__(self, tokenizer=None):
+        self.tokenizer = tokenizer
+
+    def collate_fn(self, data):
+        try:
+            x, y, sentence_sample, embed, num_sentences, input_ids, attention_mask = data
+        except ValueError:
+            x, y, sentence_sample, embed, num_sentences, input_ids, attention_mask = zip(*data)
+        # x= np.array(x)
+        if self.tokenizer:
+            pass
+        #            inputs = self.tokenizer.batch_encode_plus(
+        #                [item for row in sentence_sample for item in row],
+        #                return_tensors="pt",
+        #                padding=True,
+        #                truncation=True,
+        #                # max_length=50,
+        #                add_special_tokens=True,
+        #            )
+        else:
+            return {
+                "input_ids": None,
+                "attention_mask": None,
+                "covariates": torch.Tensor(x),
+                "labels": torch.Tensor(y),
+                "num_sentences": num_sentences,
+            }
+        #        if y:
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "covariates": torch.Tensor(x),
+            "labels": torch.Tensor(y),
+            "num_sentences": num_sentences,
+        }
 
 
-def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=100, optimizer=None, seed=123, device="cuda"):
-
+def trainer(
+    model,
+    model_dataset,
+    epochs,
+    tokenizer=None,
+    batch_size=100,
+    optimizer=None,
+    seed=123,
+    device="cuda",
+    num_workers=4,
+    update_freq=100,
+    **kwargs,
+):
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
         model_dataset,
         (
@@ -45,60 +91,77 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
         optimizer = torch.optim.Adam(model.parameters(), lr=0.000001)
 
     epochs = epochs
-    train_batches = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_batches = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
-    test_batches = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    col = collate(tokenizer=tokenizer)
+    train_batches = MultiEpochsDataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=col.collate_fn, num_workers=num_workers, pin_memory=True
+    )
+    val_batches = MultiEpochsDataLoader(
+        valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=col.collate_fn, num_workers=num_workers, pin_memory=True
+    )
+    test_batches = MultiEpochsDataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False, collate_fn=col.collate_fn, num_workers=num_workers, pin_memory=True
+    )
+    # we could use collate_fn to do the tokeization
     total_steps = len(train_batches) * epochs
 
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+        optimizer, num_warmup_steps=5, num_training_steps=total_steps  # Default value in run_glue.py
     )
-    Loss = []
     Total_Loss = []
     Validation_Loss = []
-    model.to(device)
     for epoch in range(epochs):
         # reset total loss for each epoch
         total_loss = 0
         model.train()  # set model in train mode
-        for x, y, sentence_sample, embeddingsx, num_sentences in train_batches:
+        for batch in train_batches:
+            if batch["input_ids"] is None:
+                batch = {
+                    "covariates": batch["covariates"].to(device, non_blocking=True),
+                    "num_sentences": batch["num_sentences"],
+                    "labels": batch["labels"].to(device, non_blocking=True),
+                }
+            else:
+                batch = {
+                    "input_ids": batch["input_ids"].to(device),
+                    "attention_mask": batch["attention_mask"].to(device),
+                    "covariates": batch["covariates"].to(device, non_blocking=True),
+                    "num_sentences": batch["num_sentences"],
+                    "labels": batch["labels"].to(device, non_blocking=True),
+                }
             optimizer.zero_grad()
-            loss = evaluate_fkt(
-                model=model,
-                tokenizer=tokenizer,
-                x=x.to(device),
-                y=y.to(device),
-                sentence_sample=sentence_sample,
-                device=device,
-                num_sentences=num_sentences,
-            )
+            loss = model(**batch)["loss"]
+            total_loss += loss.item()
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             scheduler.step()
-            Loss.append(loss)
-            total_loss += loss.item()
 
         val_loss = 0
         model.eval()  # set model in eval mode
 
         with torch.no_grad():
-            for x, y, sentence_sample, embeddingsx, num_sentences in val_batches:
-                v_loss = evaluate_fkt(
-                    model=model,
-                    tokenizer=tokenizer,
-                    x=x.to(device),
-                    y=y.to(device),
-                    sentence_sample=sentence_sample,
-                    device=device,
-                    num_sentences=num_sentences,
-                )
+            for batch in val_batches:
+                if batch["input_ids"] is None:
+                    batch = {
+                        "covariates": batch["covariates"].to(device, non_blocking=True),
+                        "num_sentences": batch["num_sentences"],
+                        "labels": batch["labels"].to(device, non_blocking=True),
+                    }
+                else:
+                    batch = {
+                        "input_ids": batch["input_ids"].to(device),
+                        "attention_mask": batch["attention_mask"].to(device),
+                        "covariates": batch["covariates"].to(device, non_blocking=True),
+                        "num_sentences": batch["num_sentences"],
+                        "labels": batch["labels"].to(device, non_blocking=True),
+                    }
+                v_loss = model(**batch)["loss"]
                 val_loss += v_loss.item()
 
-        print(f"epoch = {epoch}, loss = {loss}")
-        print(f"epoch = {epoch}, loss = {v_loss}")
-        print(f"epoch = {epoch}, total loss = {total_loss/ len(train_batches)}")
-        print(f"epoch = {epoch}, validation loss = {val_loss/ len(val_batches)}")
+        if (epoch + 1) % update_freq == 0:
+            print(f"epoch = {epoch+1}/{epochs}, train loss = {loss}")
+            print(f"epoch = {epoch+1}/{epochs}, loss = {v_loss}")
+            print(f"epoch = {epoch+1}/{epochs}, total loss = {total_loss/ len(train_batches)}")
+            print(f"epoch = {epoch+1}/{epochs}, validation loss = {val_loss/ len(val_batches)}")
         Total_Loss.append(total_loss / len(train_batches))
         Validation_Loss.append(val_loss / len(val_batches))
     print("Done training!")
@@ -107,20 +170,26 @@ def trainer(model, model_dataset, epochs, evaluate_fkt, tokenizer, batch_size=10
     model.eval()  # set model in eval mode
 
     with torch.no_grad():
-        for x, y, sentence_sample, embeddingsx, num_sentences in test_batches:
-            t_loss = evaluate_fkt(
-                model=model,
-                tokenizer=tokenizer,
-                x=x.to(device),
-                y=y.to(device),
-                sentence_sample=sentence_sample,
-                device=device,
-                num_sentences=num_sentences,
-            )
+        for batch in test_batches:
+            if batch["input_ids"] is None:
+                batch = {
+                    "covariates": batch["covariates"].to(device, non_blocking=True),
+                    "num_sentences": batch["num_sentences"],
+                    "labels": batch["labels"].to(device, non_blocking=True),
+                }
+            else:
+                batch = {
+                    "input_ids": batch["input_ids"].to(device),
+                    "attention_mask": batch["attention_mask"].to(device),
+                    "covariates": batch["covariates"].to(device, non_blocking=True),
+                    "num_sentences": batch["num_sentences"],
+                    "labels": batch["labels"].to(device, non_blocking=True),
+                }
+            t_loss = model(**batch)["loss"]
             test_loss += t_loss.item()
     Test_Loss = test_loss / len(test_batches)
 
-    print(f"epoch = {epoch}, Test loss = {test_loss}")
+    print(f"Test loss = {test_loss}")
     # Plot the graph for epochs and loss
 
     plt.plot([l for l in Total_Loss], label="Train Loss")
@@ -175,31 +244,59 @@ def visualize_attention(model, tokenizer, sentences=["This is not a test"], view
         return head_view(attention, tokens)
 
 
+class _RepeatSampler(object):
+    """Sampler that repeats forever.
+    Args:
+        sampler (Sampler)
+    """
+
+    def __init__(self, sampler):
+        self.sampler = sampler
+
+    def __iter__(self):
+        while True:
+            yield from iter(self.sampler)
+
+
 class DataConstructor(Dataset):
-    def __init__(
-        self,
-        sentences,
-        covariates,
-        labels=None,
-        tokenizer=None,
-        device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
-    ):
-        self.sentences = sentences
-        self.covariates = torch.Tensor(covariates).to(device)
+    def __init__(self, sentences, covariates, labels=None, tokenizer=None, prepare_cache=True):
+        self.covariates = np.array(covariates)  # torch.Tensor(covariates).to(device)
         if labels:
-            self.labels = torch.Tensor(labels).to(device)
+            self.labels = np.array(labels)  # torch.Tensor(labels).to(device)
             self.has_label = True
         else:
             self.labels = None
             self.has_label = False
         self.tokenizer = tokenizer
         self.len = len(covariates)
-        self.embeddings = [0] * len(covariates)
-        self.num_sentences = [len(sentence) for sentence in sentences]
-        self.device = device
+        self.embeddings = np.array([0] * len(covariates))
+        self.num_sentences = np.array([len(sentence) for sentence in sentences])
+
+        # Pad sentences
+        max_sentences = max(self.num_sentences)
+        self.sentences = [np.pad(s, (0, max_sentences - len(s)), "constant", constant_values="") for s in sentences]
+        self.sentences = np.array(self.sentences)
+
+        self.prepare_cache = prepare_cache
+        if prepare_cache:
+            cache = self.tokenizer.batch_encode_plus(
+                [item for row in self.sentences for item in row],
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=50,
+                add_special_tokens=True,
+            )
+            self.cached_inputs_ids = cache["input_ids"]
+            self.cached_attention_mask = cache["attention_mask"]
+
+        else:
+            self.cached_inputs_ids = [0 for i in self.sentences]
+            self.cached_attention_mask = [0 for i in self.sentences]
+
         # Todo: Add checks! len(covariates)=len(sentences)=len(labels) etc.
 
-    def prepare_for_model(self, index=None):
+    def prepare_for_model(self, index=None, device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")):
         inputs = self.tokenizer.batch_encode_plus(
             [item for row in self.sentences for item in row],
             return_tensors="pt",
@@ -207,14 +304,14 @@ class DataConstructor(Dataset):
             truncation=True,
             max_length=50,
             add_special_tokens=True,
-        ).to(self.device)
+        ).to(device)
         if not self.has_label:
-            return {**inputs, "covariates": self.covariates, "num_sentences": self.num_sentences}
+            return {**inputs, "covariates": torch.Tensor(self.covariates).to(device), "num_sentences": self.num_sentences}
         else:
             return {
                 **inputs,
-                "covariates": self.covariates,
-                "labels": self.labels,
+                "covariates": self.covariates.to(device),
+                "labels": self.labels.to(device),
                 "num_sentences": self.num_sentences,
             }
 
@@ -226,7 +323,12 @@ class DataConstructor(Dataset):
             self.sentences[index],
             self.embeddings[index],
             self.num_sentences[index],
+            self.cached_inputs_ids[index],
+            self.cached_attention_mask[index],
         )
+
+    def __getitems__(self, index_list):
+        return self.__getitem__(index_list)
 
     # getting data length
     def __len__(self):

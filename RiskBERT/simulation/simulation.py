@@ -11,7 +11,6 @@ from RiskBERT import glmModel, RiskBertModel
 from RiskBERT import trainer, evaluate_model, evaluate_model_glm, print_params, visualize_model
 from RiskBERT.simulation.data_functions import Data
 
-
 # %%
 # Set device to gpu if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -36,7 +35,6 @@ glm_model, Total_Loss_glm, Validation_Loss_glm, Test_Loss_glm = trainer(
     model=glm_model,
     model_dataset=model_dataset,
     epochs=5,
-    evaluate_fkt=evaluate_model_glm,
     batch_size=500,
     tokenizer=AutoTokenizer.from_pretrained(pre_model),
     optimizer=torch.optim.SGD(glm_model.parameters(), lr=0.001),
@@ -49,7 +47,6 @@ model, Total_Loss, Validation_Loss, Test_Loss = trainer(
     model_dataset=model_dataset,
     epochs=5,
     batch_size=1000,
-    evaluate_fkt=evaluate_model,
     tokenizer=AutoTokenizer.from_pretrained(pre_model),
     optimizer=torch.optim.SGD(model.parameters(), lr=0.001),
     device=device,
@@ -68,7 +65,6 @@ model_unfreeze, Total_Loss_unfreeze, Validation_Loss_unfreeze, Test_Loss_unfreez
     model_dataset=model_dataset,
     epochs=5,
     batch_size=250,
-    evaluate_fkt=evaluate_model,
     tokenizer=AutoTokenizer.from_pretrained(pre_model),
     optimizer=torch.optim.SGD(model_unfreeze.parameters(), lr=0.001),
     device=device,
@@ -137,4 +133,7 @@ my_data = DataConstructor(
 
 model = RiskBertModel(model=pre_model, input_dim=2, dropout=0.4, freeze_bert=True, mode="CLS")
 # %%
+model.to(device)
 model(**my_data.prepare_for_model())
+
+# %%

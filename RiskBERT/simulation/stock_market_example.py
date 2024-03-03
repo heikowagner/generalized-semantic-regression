@@ -5,13 +5,15 @@ import yahooquery as yq
 import matplotlib.pyplot as plt
 import numpy as np
 from RiskBERT import normalLoss
-from RiskBERT import RiskBertModel
-from RiskBERT import trainer, evaluate_model
+from RiskBERT import RiskBertModel, glmModel
+from RiskBERT import trainer
 from RiskBERT import DataConstructor
 import torch
 from transformers import AutoTokenizer
 import datetime
 import numpy as np
+
+import torch.nn as nn
 
 refit = True
 # %%
@@ -55,12 +57,24 @@ start = min(appl_news["date"])
 
 tq = yq.Ticker("AAPL")
 stock_data = tq.history(start=start, end=end)
+
+# %%
+# Get Dow Jones data to remove market trends
+end = max(appl_news["date"])
+start = min(appl_news["date"])
+
+tq = yq.Ticker("^DJI")
+dow_data = tq.history(start=start, end=end)
+dow_data["log_diff"] = np.log(dow_data["close"]) - np.log(dow_data["open"])
+
 # %%
 # Join Data
 appl_news["daydate"] = pd.to_datetime(appl_news["date"]).dt.date
 
 # %%
-stock_with_news = stock_data.merge(appl_news, left_on="date", right_on="daydate", how="left")
+stock_with_news = stock_data.merge(appl_news, left_on="date", right_on="daydate", how="left").merge(
+    dow_data, left_on="daydate", right_on="date", suffixes=("", "_dow")
+)
 
 # %%
 
@@ -79,24 +93,60 @@ stock_with_news["daycounter"] = (stock_with_news["daydate"] - min(stock_with_new
 stock_with_news["num_symbols"] = stock_with_news["symbols"].apply(lambda x: len(x))
 
 # %%
+stock_with_news_grp = stock_with_news.groupby("daycounter").title.apply(list)
+
+single_day = (
+    pd.DataFrame(stock_with_news_grp)
+    .merge(stock_with_news, left_on="daycounter", right_on="daycounter", how="left")
+    .drop_duplicates("daycounter")
+)
+
+# %%
 # Set device to gpu if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-pre_model = "distilbert-base-uncased"
-model = RiskBertModel(model=pre_model, input_dim=1, dropout=0.2, freeze_bert=True, mode="CLS", loss_fn=normalLoss)
-tokenizer = AutoTokenizer.from_pretrained(pre_model)
 # %%
-covariates = np.array([stock_with_news["num_symbols"]]).T
+covariates = np.array(
+    [
+        stock_with_news["num_symbols"],
+        stock_with_news["sentiment"].apply(lambda x: x["neg"]),
+        stock_with_news["sentiment"].apply(lambda x: x["neu"]),
+        stock_with_news["sentiment"].apply(lambda x: x["pos"]),
+        # stock_with_news["log_diff"],
+    ]
+).T
+
+pre_model = "distilbert-base-uncased"
+tokenizer = AutoTokenizer.from_pretrained(pre_model)
 
 my_data = DataConstructor(
     sentences=[[x] for x in stock_with_news["title"]],
     covariates=covariates,
     labels=[[x] for x in stock_with_news["label"]],
     tokenizer=tokenizer,
-    device=device,
 )
 
 # %%
+
+glm_model = glmModel(input_dim=covariates.shape[1], loss_fn=nn.MSELoss(), cnt_hidden_layer=0)
+
+glm_model.to(device)
+glm_model, Total_Loss_glm, Validation_Loss_glm, Test_Loss_glm = trainer(
+    model=glm_model,
+    model_dataset=my_data,
+    epochs=5000,
+    batch_size=int(len(covariates) / 8),
+    tokenizer=None,
+    optimizer=torch.optim.Adam(glm_model.parameters(), lr=0.001),
+    device=device,
+    num_workers=0,
+)
+
+# %%
+model = RiskBertModel(
+    model=pre_model, input_dim=covariates.shape[1], dropout=0.2, freeze_bert=False, mode="CLS", loss_fn=nn.MSELoss()
+)  # normalLoss)
+
 model.to(device)
 # %%
 
@@ -104,12 +154,12 @@ if refit:
     fitted_model, Total_Loss, Validation_Loss, Test_Loss = trainer(
         model=model,
         model_dataset=my_data,
-        epochs=100,
-        batch_size=2000,
-        evaluate_fkt=evaluate_model,
+        epochs=5000,
+        batch_size=150,
         tokenizer=tokenizer,
-        optimizer=torch.optim.SGD(model.parameters(), lr=0.001),
+        optimizer=torch.optim.Adam(model.parameters(), lr=0.001),
         device=device,
+        update_freq=1,
     )
     torch.save(fitted_model, "./fitted_model.mod")
 else:
@@ -122,28 +172,36 @@ batch_size = 5000
 batches = DataLoader(my_data, batch_size=batch_size, shuffle=False)
 preds = []
 labels = []
-for batch in batches:
-    inputs = tokenizer.batch_encode_plus(
-        [item for row in batch[2] for item in row],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        # max_length=50,
-        add_special_tokens=True,
-    ).to(device)
-    labels = labels + batch[1].tolist()
-    preds = preds + fitted_model(**inputs, covariates=batch[0], num_sentences=batch[4])["lambda"].tolist()
+data = pd.DataFrame()
+sentence = []
+fitted_model.eval()  # set model in eval mode
+with torch.no_grad():
+    for batch in batches:
+        inputs = tokenizer.batch_encode_plus(
+            [item for row in batch[2] for item in row],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            # max_length=50,
+            add_special_tokens=True,
+        ).to(device)
+        # data = data._append(pd.DataFrame(batch[2][0]).merge(pd.DataFrame(labels), left_index=True, right_index=True).merge(pd.DataFrame(preds), left_index=True, right_index=True))
+        labels = labels + batch[1].tolist()
+        sentence = sentence + [item for row in batch[2] for item in row]
+        preds = preds + fitted_model(**inputs, covariates=batch[0], num_sentences=batch[4])["lambda"].tolist()
 
 # %%
 preds = np.array(preds)
 labels = np.array(labels)
 # %%
-R_squared = -sum((preds - np.mean(labels)) ** 2) / sum((labels - np.mean(labels)) ** 2)
+mse = np.mean((preds - labels) ** 2)
 
 # %%
-
-from sklearn.metrics import r2_score
-
-r2_score(labels, preds)
+# We have to beat at least the standart deviation
+sigma = np.mean((labels - np.mean(labels)) ** 2)
 
 # %%
+import matplotlib.pyplot as plt
+
+plt.plot([l for l in Validation_Loss], label="Validation Loss")
+plt.xlabel("Iterations ")
